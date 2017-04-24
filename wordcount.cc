@@ -1,3 +1,7 @@
+/************************************/
+/** Tsung Tai Yeh, Suhas Gundimeda**/
+/**********************************/
+
 #include <omp.h>
 #include <iostream>
 #include <map>
@@ -82,7 +86,6 @@ int main(int argc, char* argv[])
     }
 }
     t[0] += omp_get_wtime();
-#if 0
     t[1] = -omp_get_wtime();
     // reduce
     for(i = 0; i < fileNum; i++){
@@ -97,12 +100,11 @@ int main(int argc, char* argv[])
         }
     }
     t[1] += omp_get_wtime();
-#endif
     printf("The number of thread:%d, Map time:%lf\n", td, t[0]);
 
     // print out results of wordcount
-    //for(i = 0; i < wordStoreTable.size(); i++)
-//        cout << wordStoreTable[i] << ":" << countStoreTable[i] << endl;
+    for(i = 0; i < wordStoreTable.size(); i++)
+        cout << wordStoreTable[i] << ":" << countStoreTable[i] << endl;
 
 
 
