@@ -30,19 +30,13 @@ int main(int argc, char *argv[]){
 	int rank, size;
 	int i, j;
 	int stride1;
-	int start, end;
-	int t = 0;
-	int result = 0;
-	int source, dest;
-	int tag1, tag2;
 	MPI_Status status;
-	double t1, t2;
+	double t1, t2, t3, t4;
 
     ifstream inputFile;
 
     int fileNum = argc -1;
 
-    //map<string, int> mapper[fileNum];
     map<string, int> reducer[fileNum];
     vector<string> words[fileNum];
     vector<int>inputSize;
@@ -56,8 +50,6 @@ int main(int argc, char *argv[]){
     int *buf;
     int *buf2[size];
     map<string, int> mapper[size];
-	tag2 = 1;
-	tag1 = 2;
     
     // read input files
     for(i = 1; i < argc; i++){
@@ -81,13 +73,15 @@ int main(int argc, char *argv[]){
     MPI_Barrier(MPI_COMM_WORLD);
     //mapper
     if(rank == 0) t1 = -MPI_Wtime();
+    t3 = -MPI_Wtime();
 
     for(i = 0; i < stride1; i++){
         for(j = 0; j <inputSize[rank * stride1 + i]; j++){
             mapper[rank][words[rank * stride1 + i][j]] ++;
         }
     }
-    
+    t3 += MPI_Wtime();
+    printf("mapper[%d] time:%lf\n", rank, t3);
     // broadcast results of mapper
     map<string, int>::iterator it;
     int count = 0;
@@ -106,6 +100,7 @@ int main(int argc, char *argv[]){
         strcpy(m_str[count], it->first.c_str());
         count ++;
     }
+    
     MPI_Barrier(MPI_COMM_WORLD);
     if(rank == 0) t1 += MPI_Wtime();
             
@@ -116,6 +111,8 @@ int main(int argc, char *argv[]){
 
     // reducer and shuffling
     if(rank == 0) t2 = -MPI_Wtime();
+
+    t4 = -MPI_Wtime();
     for(i = 0; i < global_sum * size; i++){
         if(buf[i] > 0){
             if((int)a_str[i][0] > START_TOKEN + rank * STRIDE &&
@@ -126,7 +123,8 @@ int main(int argc, char *argv[]){
         }
     }
     if(rank == 0) t2 += MPI_Wtime();
-    //if(rank == 0 )printf("mapper size:%d, %d, %d\n", reducer[0]["a"], buf[1], count);
+    t4 += MPI_Wtime();
+    printf("reducer[%d] time:%d, %lf\n", rank, t4);
 
     MPI_Barrier(MPI_COMM_WORLD);
 
@@ -140,7 +138,7 @@ int main(int argc, char *argv[]){
     }
 #endif        
 	if(rank == 0){
-		printf("mapper time:%lf, reduce%lf\n",t1, t2);
+		printf("total mapper time:%lf, reduce%lf\n",t1, t2);
 
 	}
     free(buf2[rank]);
