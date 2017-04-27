@@ -10,7 +10,7 @@
 
 using namespace std;
 
-#define THREAD 16
+#define THREAD 1
 #define TOKEN 32
 #define STRIDE (TOKEN/THREAD)
 #define START_TOKEN 96
@@ -28,7 +28,7 @@ int main(int argc, char *argv[]){
     
     map<int, map<string, int> > mapper;
     map<int, map<string, int> > reducer;
-    double t1, t2, t3;
+    double t1, t2, t3, t4;
 
     t1 = -omp_get_wtime();   
     // read in files
@@ -72,16 +72,22 @@ int main(int argc, char *argv[]){
         }
     }
     t3 += omp_get_wtime();
-#if 0
+    t4 = -omp_get_wtime();
+    fstream outputFile;
+    outputFile.open("result.out", fstream::out);
+#if 1
     for(i = 0; i < THREAD; i++){
         if(reducer[i].size() > 0){
             map<string, int>::iterator it;
             for(it = reducer[i].begin(); it!= reducer[i].end(); it++){
-                printf("file size:%s, %d\n", it->first.c_str(), it->second);
+                //printf("file size:%s, %d\n", it->first.c_str(), it->second);
+                outputFile << it->first.c_str() << " : " << it->second << endl;
             }
         }
     }
 #endif
-    printf("read:%lf, map:%lf, reduce:%lf\n", t1, t2, t3);
+    t4 += omp_get_wtime();
+    printf("readin:%lf, map:%lf, reduce:%lf, writeout:%lf\n", t1, t2, t3, t4);
+    outputFile.close();
     return 0;
 }

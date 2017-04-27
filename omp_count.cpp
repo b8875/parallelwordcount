@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <queue>
 #include <algorithm>
 #include <cstring>
@@ -22,80 +23,110 @@ bool charRemove(int i)
 int main(int argc, char *argv[]){
 
     int i, j;
-    vector<int>inputSize;
-    vector< vector< string > > words;
-    ifstream inputFile;
     
-    double t1, t2, t3;
+    double t1, t2, t3, t4, t_time;
+    double m_td_time[THREAD], r_td_time[THREAD], 
+            w_td_time[THREAD], i_td_time[THREAD];
 
     int fileNum = argc -1;
+    int stride1 = fileNum/THREAD;
 
-    map<string, int> mapper[fileNum];
-    map<string, int> reducer[fileNum];
-
-    t1 = -omp_get_wtime();   
-    // read in files
-    for(i = 1; i < argc; i++){
-        inputFile.open(argv[i]);
-        string w;
-        int word_count = 0;
-        words.push_back(vector<string>());
-        while(inputFile >> w){
-            transform(w.begin(), w.end(), w.begin(), ::tolower);
-            w.erase(std::remove_if(w.begin(), w.end(), charRemove), w.end());
-            if(w.size() > 0 && (int)w.at(0) > 60){
-                words[i-1].push_back(w);
-                word_count ++;
-            }
-        }
-        inputFile.close();
-        inputSize.push_back(word_count);
-    }
-    t1 += omp_get_wtime();
+    map<string, int> mapper[THREAD];
+    map<string, int> reducer[THREAD];
+    vector<string> words[THREAD];
+    int inputSize[THREAD];
 
     omp_set_num_threads(THREAD);
-
-    printf("file number:%d\n", argc-1);
-    t2 = -omp_get_wtime();
-    // mappers
-    #pragma omp parallel private(j)
-    {
-        #pragma omp for
-        for(i = 0; i < fileNum; i++){
-            for(j = 0; j < inputSize[i]; j++){
-                mapper[i][words[i][j]] ++;
-            }
-        }
-    }
-    t2 += omp_get_wtime();
- 
-    t3 = -omp_get_wtime();
-    // shuffering and reduce
-    //for(i = 0; i < THREAD; i++){ 
-    #pragma omp parallel private(j)
+    t_time = -omp_get_wtime();
+    t1 = -omp_get_wtime();
+   
+    // read in files 
+    #pragma omp parallel private(i)
     {
         int tid = omp_get_thread_num();
-        for(j = 0; j < fileNum; j++){
-            map<string, int>::iterator it; 
-            for(it = mapper[j].begin(); it!= mapper[j].end(); it++){
+        int word_count = 0;
+        i_td_time[tid] = -omp_get_wtime();
+        ifstream inputFile;
+        for(i = 0; i < stride1; i++){
+            inputFile.open(argv[tid*stride1+i+1]);
+            string w;
+            while(inputFile >> w){
+                transform(w.begin(), w.end(), w.begin(), ::tolower);
+                w.erase(std::remove_if(w.begin(), w.end(), charRemove), w.end());
+                if(w.size() > 0 && (int)w.at(0) > 60){
+                    words[tid].push_back(w);
+                    word_count ++;
+                }
+            }
+            inputFile.close();
+        }
+        inputSize[tid] = word_count;
+        i_td_time[tid] += omp_get_wtime();
+    }
+
+    t1 += omp_get_wtime();
+    t2 = -omp_get_wtime();
+
+    //mapper
+    #pragma omp parallel private(i)
+    {
+        int tid = omp_get_thread_num();
+        m_td_time[tid] = -omp_get_wtime();
+
+        for(i = 0; i < inputSize[tid]; i++){
+            mapper[tid][words[tid][i]] ++;
+        }
+        m_td_time[tid] += omp_get_wtime();
+    }
+    t2 += omp_get_wtime();
+    t3 = -omp_get_wtime();
+
+    // shuffering and reduce
+    #pragma omp parallel private(i)
+    {
+        int tid = omp_get_thread_num();
+        r_td_time[tid] = -omp_get_wtime();
+        map<string, int>::iterator it;
+        for(i = 0; i < THREAD; i++){ 
+            for(it = mapper[i].begin(); it!= mapper[i].end(); it++){
                 if((int)it->first.at(0) > START_TOKEN + tid * STRIDE &&
                     (int)it->first.at(0) <= START_TOKEN + (tid+1) * STRIDE)
                     reducer[tid][it->first] += it->second;
             }
         }
+        r_td_time[tid] += omp_get_wtime();
     }
     t3 += omp_get_wtime();
-#if 1
-    for(i = 0; i < THREAD; i++){
-        if(reducer[i].size() > 0){
+    t4 = -omp_get_wtime();
+
+    //writeOut
+    #pragma omp parallel
+    {
+        int tid = omp_get_thread_num();
+        w_td_time[tid] = -omp_get_wtime();
+        fstream outputFile;
+        string outFile = "out/result.out";
+        ostringstream convert;
+        convert << tid;
+        outFile.append(convert.str());
+        outputFile.open(outFile.c_str(), fstream::out);
+        if(reducer[tid].size() > 0){
             map<string, int>::iterator it;
-            for(it = reducer[i].begin(); it!= reducer[i].end(); it++){
-                printf("file size:%s, %d\n", it->first.c_str(), it->second);
+            for(it = reducer[tid].begin(); it!= reducer[tid].end(); it++){
+                outputFile << it->first.c_str() << " : " << it->second << endl;
             }
         }
+        w_td_time[tid] += omp_get_wtime();
+        outputFile.close();
     }
-#endif
-    printf("read:%lf, map:%lf, reduce:%lf\n", t1, t2, t3);
 
+    t4 += omp_get_wtime();
+    t_time += omp_get_wtime();
+    printf("omp readin:%lf, map:%lf, reduce:%lf, writeout:%lf, total:%lf\n", 
+            t1, t2, t3, t4, t_time);
+    for(i = 0; i < THREAD; i++){
+        printf("readIn[%d]:%lf, mapper[%d]:%lf, reducer[%d]:%lf, writeOut[%d], %lf\n", 
+            i, i_td_time[i], i, m_td_time[i], i, r_td_time[i], i, w_td_time[i]);
+    }
     return 0;
 }
